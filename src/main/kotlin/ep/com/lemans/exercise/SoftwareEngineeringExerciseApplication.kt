@@ -10,20 +10,28 @@ import org.springframework.web.bind.annotation.RestController
 class SoftwareEngineeringExerciseApplication
 
 fun main(args: Array<String>) {
-	runApplication<SoftwareEngineeringExerciseApplication>(*args)
+    runApplication<SoftwareEngineeringExerciseApplication>(*args)
 }
 
+/**
+ * Single controller class for this application.
+ */
 @RestController
-class Controller(@Autowired val dataService: DataService) {
+class Controller(@Autowired val databaseService: DatabaseService) {
 
-	init {
-		dataService.refresh()
-	}
+    /**
+     * Refresh data on application start up.
+     */
+    init {
+        databaseService.refresh()
+    }
 
-	@GetMapping("/")
-	fun fetch(): List<Product>
-	{
-		return dataService.fetch()
-	}
+    /**
+     * End point for fetching all data in the database.
+     */
+    @GetMapping("/")
+    fun fetch(): Set<Product> {
+        return databaseService.fetch()
+    }
 
 }
