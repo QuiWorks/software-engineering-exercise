@@ -61,10 +61,10 @@ class JdbcDatabaseService(@Autowired val fileService: FileService, @Autowired ov
         val products: MutableSet<Product> = mutableSetOf()
         connectionService.getConnection().createStatement().executeQuery(FETCH_QUERY).use { resultSet ->
             resultSet.iterator().forEach { row ->
-                val key = row.getInt(PRODUCT_ID)
-                val part = toPart(row)
+                val key = row.getId()
+                val part = row.toPart()
                 if (products.containsKey(key)) products.findByKey(key)?.addPart(part)
-                else products.add(toProduct(row).addPart(part))
+                else products.add(row.toProduct().addPart(part))
             }
         }
         return products
@@ -115,21 +115,6 @@ class JdbcDatabaseService(@Autowired val fileService: FileService, @Autowired ov
         }
     }
 
-    private fun toProduct(row: ResultSet): Product {
-        return Product(row.getInt(PRODUCT_ID), row.getString(PRODUCT_NAME), row.getString(CATEGORY_NAME))
-    }
-
-    private fun toPart(row: ResultSet): Part {
-        return Part(
-            row.getString(PUNCTUATED_PART_NUMBER),
-            row.getString(PART_DESCRIPTION),
-            row.getInt(PRODUCT_ID),
-            row.getDouble(ORIGINAL_RETAIL_PRICE),
-            row.getString(BRAND_NAME),
-            row.getString(IMAGE_URL)
-        )
-
-    }
 }
 
 interface ConnectionService {
@@ -146,6 +131,25 @@ class RealConnectionService: ConnectionService {
 
 fun <T : Model> MutableSet<T>.containsKey(key: Int): Boolean = any { it.productId == key }
 fun <T : Model> MutableSet<T>.findByKey(key: Int): T? = find { it.productId == key }
+
+fun ResultSet.toPart(): Part {
+    return Part(
+        getString(PUNCTUATED_PART_NUMBER),
+        getString(PART_DESCRIPTION),
+        getInt(PRODUCT_ID),
+        getDouble(ORIGINAL_RETAIL_PRICE),
+        getString(BRAND_NAME),
+        getString(IMAGE_URL)
+    )
+}
+
+fun ResultSet.toProduct(): Product {
+    return Product(getInt(PRODUCT_ID), getString(PRODUCT_NAME), getString(CATEGORY_NAME))
+}
+
+fun ResultSet.getId(): Int {
+    return getInt(PRODUCT_ID)
+}
 
 /**
  * Creates an iterator through a [[ResultSet]]
