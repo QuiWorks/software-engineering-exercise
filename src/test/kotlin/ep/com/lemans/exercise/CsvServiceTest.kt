@@ -1,9 +1,11 @@
 package ep.com.lemans.exercise
 
 import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.Mockito
+import org.mockito.kotlin.mock
 import java.io.BufferedReader
-import java.io.FileReader
 import java.io.StringReader
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -24,10 +26,29 @@ private const val PRODUCT_SOURCE_FILE = "src/main/resources/data/products.csv"
 
 internal class CsvServiceTest {
 
-    private val service = CsvService(BufferedReader(StringReader(PART_STRING)), BufferedReader(StringReader(PRODUCT_STRING)))
+    private val productBufferedReaderServiceMock: BufferedReaderService = mock();
+    private val partBufferedReaderServiceMock: BufferedReaderService = mock();
+    @BeforeEach
+    internal fun setUp() {
+        Mockito.`when`(productBufferedReaderServiceMock.get(Mockito.anyString())).thenReturn(
+            BufferedReader(
+                StringReader(
+                    PRODUCT_STRING
+                )
+            )
+        )
+        Mockito.`when`(partBufferedReaderServiceMock.get(Mockito.anyString())).thenReturn(
+            BufferedReader(
+                StringReader(
+                    PART_STRING
+                )
+            )
+        )
+    }
 
     @Test
     fun `CSV service correctly parses products`() {
+        val service = CsvService(productBufferedReaderServiceMock)
         val products = service.readProducts()
         Assertions.assertEquals(1, products.size, "Number of products is not correct.")
         val (id, name, category) = products[0]
@@ -38,6 +59,7 @@ internal class CsvServiceTest {
 
     @Test
     fun `CSV service correctly parses parts`() {
+        val service = CsvService(partBufferedReaderServiceMock)
         val parts = service.readParts()
         Assertions.assertEquals(1, parts.size, "Number of parts is not correct.")
         val (number, desc, id, price, brand, image) = parts[0]
@@ -51,16 +73,18 @@ internal class CsvServiceTest {
 
     @Test
     fun `CSV service parses all products`() {
-        val count = Files.lines(Path.of(PRODUCT_SOURCE_FILE), StandardCharsets.UTF_8).count() -1 // Exclude header line from count.
-        val service = CsvService(BufferedReader(StringReader(PART_STRING)), BufferedReader(FileReader(PRODUCT_SOURCE_FILE)))
+        val count = Files.lines(Path.of(PRODUCT_SOURCE_FILE), StandardCharsets.UTF_8)
+            .count() - 1 // Exclude header line from count.
+        val service = CsvService(BufferedReaderServiceImpl())
         Assertions.assertEquals(count.toInt(), service.readProducts().size, "Number of products is not correct.")
     }
 
 
     @Test
     fun `CSV service parses all parts`() {
-        val count = Files.lines(Path.of(PART_SOURCE_FILE), StandardCharsets.UTF_8).count() -1 // Exclude header line from count.
-        val service = CsvService(BufferedReader(FileReader(PART_SOURCE_FILE)), BufferedReader(StringReader(PRODUCT_STRING)))
+        val count = Files.lines(Path.of(PART_SOURCE_FILE), StandardCharsets.UTF_8)
+            .count() - 1 // Exclude header line from count.
+        val service = CsvService(BufferedReaderServiceImpl())
         Assertions.assertEquals(count.toInt(), service.readParts().size, "Number of parts is not correct.")
     }
 

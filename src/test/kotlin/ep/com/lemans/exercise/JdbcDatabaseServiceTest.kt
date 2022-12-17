@@ -5,9 +5,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.mockito.kotlin.mock
-import java.sql.Connection
 import java.sql.ResultSet
-import java.sql.Statement
 
 private const val PUNCTUATED_PART_NUMBER_VALUE_1 = "0101-3337"
 private const val PUNCTUATED_PART_NUMBER_VALUE_2 = "0101-3338"
@@ -22,17 +20,13 @@ private const val CATEGORY_VALUE = "Adult MX Helmets"
 internal class JdbcDatabaseServiceTest {
 
     private val mockConnectionService: ConnectionService = mock()
-    private val mockConnection: Connection = mock()
-    private val mockStatement: Statement = mock()
     private val mockResultSet: ResultSet = mock()
     private val mockFileService: FileService = mock()
     private val service = JdbcDatabaseService(mockFileService, mockConnectionService)
 
     @BeforeEach
     fun setUp() {
-        Mockito.`when`(mockConnectionService.getConnection()).thenReturn(mockConnection)
-        Mockito.`when`(mockConnection.createStatement()).thenReturn(mockStatement)
-        Mockito.`when`(mockStatement.executeQuery(Mockito.anyString())).thenReturn(mockResultSet)
+        Mockito.`when`(mockConnectionService.getResultSet(Mockito.anyString())).thenReturn(mockResultSet)
         Mockito.`when`(mockResultSet.getInt(PRODUCT_ID)).thenReturn(PRODUCT_ID_VALUE)
         Mockito.`when`(mockResultSet.getString(PUNCTUATED_PART_NUMBER)).thenReturn(PUNCTUATED_PART_NUMBER_VALUE_1,PUNCTUATED_PART_NUMBER_VALUE_2)
         Mockito.`when`(mockResultSet.getString(PART_DESCRIPTION)).thenReturn(PART_DESC_VALUE)

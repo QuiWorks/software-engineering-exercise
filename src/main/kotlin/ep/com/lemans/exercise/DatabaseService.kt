@@ -49,7 +49,10 @@ interface DatabaseService {
  * Implementation of [[DatabaseService]] using JDBC.
  */
 @Component
-class JdbcDatabaseService(@Autowired val fileService: FileService, @Autowired override val connectionService: ConnectionService) : DatabaseService {
+class JdbcDatabaseService(
+    @Autowired val fileService: FileService,
+    @Autowired override val connectionService: ConnectionService,
+) : DatabaseService {
 
     override fun refresh() {
         clearData()
@@ -58,32 +61,34 @@ class JdbcDatabaseService(@Autowired val fileService: FileService, @Autowired ov
     }
 
     override fun fetch(): Set<Product> {
-        val products: MutableSet<Product> = mutableSetOf()
-        connectionService.getConnection().createStatement().executeQuery(FETCH_QUERY).use { resultSet ->
-            resultSet.iterator().forEach { row ->
-                val key = row.getId()
-                val part = row.toPart()
-                if (products.containsKey(key)) products.findByKey(key)?.addPart(part)
-                else products.add(row.toProduct().addPart(part))
+        with(connectionService) {
+            getResultSet(FETCH_QUERY).use { resultSet ->
+                return resultSet.fold(setOf()) { products, row ->
+                    if (!products.containsKey(row.getKey())) products + row.toProduct().add(row.toPart())
+                    else {
+                        with(products) {
+                            findByKey(row.getKey())?.add(row.toPart())
+                            this
+                        }
+                    }
+                }
             }
         }
-        return products
     }
 
     /**
      * Creates and executes bulk insert query for products table.
      */
     private fun insertProducts(products: List<Product>) {
-        val sql = buildString {
-            append("INSERT INTO $PRODUCT VALUES ")
-            val bulk = products.asSequence().map {
-                val (productId, productName, categoryName) = it
-                "('$productId', '$productName', '$categoryName')"
-            }.toList().joinToString { it }
-            append(bulk)
-        }
-        with(connectionService.getConnection()) {
-            createStatement().execute(sql)
+        with(connectionService) {
+            execute(buildString {
+                append("INSERT INTO $PRODUCT VALUES ")
+                val bulk = products.asSequence().map {
+                    val (productId, productName, categoryName) = it
+                    "('$productId', '$productName', '$categoryName')"
+                }.toList().joinToString { it }
+                append(bulk)
+            })
         }
     }
 
@@ -91,16 +96,15 @@ class JdbcDatabaseService(@Autowired val fileService: FileService, @Autowired ov
      * Creates and executes bulk insert query for parts table.
      */
     private fun insertParts(parts: List<Part>) {
-        val sql = buildString {
-            append("INSERT INTO $PART VALUES ")
-            val bulk = parts.asSequence().map {
-                val (punctuatedPartNumber, partDescription, productId, originalRetailPrice, branName, imageUrl) = it
-                "('$punctuatedPartNumber', '$partDescription', '$productId', '$originalRetailPrice','$branName','$imageUrl')"
-            }.toList().joinToString { it }
-            append(bulk)
-        }
-        with(connectionService.getConnection()) {
-            createStatement().execute(sql)
+        with(connectionService) {
+            execute(buildString {
+                append("INSERT INTO $PART VALUES ")
+                val bulk = parts.asSequence().map {
+                    val (punctuatedPartNumber, partDescription, productId, originalRetailPrice, branName, imageUrl) = it
+                    "('$punctuatedPartNumber', '$partDescription', '$productId', '$originalRetailPrice','$branName','$imageUrl')"
+                }.toList().joinToString { it }
+                append(bulk)
+            })
         }
     }
 
@@ -109,28 +113,54 @@ class JdbcDatabaseService(@Autowired val fileService: FileService, @Autowired ov
      * part.product_id is defined as cascade on delete.
      */
     private fun clearData() {
-        val sql = "DELETE FROM product"
-        with(connectionService.getConnection()) {
-            createStatement().execute(sql)
+        with(connectionService) {
+            execute("DELETE FROM product")
         }
     }
 
 }
 
 interface ConnectionService {
-    fun getConnection(): Connection
-}
-
-@Component
-class RealConnectionService: ConnectionService {
-    override fun getConnection(): Connection {
+    fun getConnection(): Connection {
         return DriverManager.getConnection(JDBC_URL, USER, PASSWORD)!!
     }
 
+    fun getResultSet(query: String): ResultSet {
+        return getConnection().createStatement().executeQuery(query)
+    }
+
+    fun execute(query: String) {
+        getConnection().createStatement().execute(query)
+    }
 }
 
-fun <T : Model> MutableSet<T>.containsKey(key: Int): Boolean = any { it.productId == key }
-fun <T : Model> MutableSet<T>.findByKey(key: Int): T? = find { it.productId == key }
+@Component
+class ConnectionServiceImpl : ConnectionService
+
+/**
+ * Extension functions for [[Set]].
+ */
+fun <T : Model> Set<T>.containsKey(key: Int): Boolean = any { it.productId == key }
+fun <T : Model> Set<T>.findByKey(key: Int): T? = find { it.productId == key }
+
+
+/**
+ * Extension functions for [[ResultSet]]
+ */
+inline fun <R> ResultSet.fold(initial: R, operation: (acc: R, ResultSet) -> R): R {
+    var accumulator = initial
+    for (element in this) accumulator = operation(accumulator, element)
+    return accumulator
+}
+
+operator fun ResultSet.iterator() : Iterator<ResultSet> {
+    val rs = this
+    return object : Iterator<ResultSet>{
+        override fun hasNext() : Boolean = rs.next()
+
+        override fun next() : ResultSet = rs
+    }
+}
 
 fun ResultSet.toPart(): Part {
     return Part(
@@ -143,22 +173,10 @@ fun ResultSet.toPart(): Part {
     )
 }
 
+fun ResultSet.getKey(): Int {
+    return getInt(PRODUCT_ID);
+}
+
 fun ResultSet.toProduct(): Product {
     return Product(getInt(PRODUCT_ID), getString(PRODUCT_NAME), getString(CATEGORY_NAME))
-}
-
-fun ResultSet.getId(): Int {
-    return getInt(PRODUCT_ID)
-}
-
-/**
- * Creates an iterator through a [[ResultSet]]
- */
-operator fun ResultSet.iterator(): Iterator<ResultSet> {
-    val rs = this
-    return object : Iterator<ResultSet> {
-        override fun hasNext(): Boolean = rs.next()
-
-        override fun next(): ResultSet = rs
-    }
 }

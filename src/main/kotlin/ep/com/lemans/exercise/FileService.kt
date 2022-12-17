@@ -1,8 +1,6 @@
 package ep.com.lemans.exercise
 
-import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Component
 import java.io.BufferedReader
 
@@ -11,49 +9,44 @@ import java.io.BufferedReader
  */
 private const val PART_FILE_PATH = "/data/parts.csv"
 private const val PRODUCT_FILE_PATH = "/data/products.csv"
-private const val PART_STREAM = "partsStream"
-private const val PRODUCT_STREAM = "productsStream"
 
 /**
  * Interface for interacting with data stored in files.
  */
 interface FileService {
-    /**
-     * The stream containing the part data.
-     */
-    val partsStream: BufferedReader
-
-    /**
-     * The stream containing the product data.
-     */
-    val productsStream: BufferedReader
-
+    val bufferedReaderService: BufferedReaderService
     /**
      * Instantiates a list of Products from a data stream.
      */
-    fun readProducts(): List<Product>
+    fun readProducts(path: String = PRODUCT_FILE_PATH): List<Product>
 
     /**
      * Instantiates a list of Parts from a data stream.
      */
-    fun readParts(): List<Part>
+    fun readParts(path: String = PART_FILE_PATH): List<Part>
 }
+
+interface BufferedReaderService {
+    fun get(path: String = PRODUCT_FILE_PATH): BufferedReader {
+        return BufferedReaderService::class.java.getResourceAsStream(path)?.bufferedReader()!!
+    }
+}
+
+@Component
+class BufferedReaderServiceImpl: BufferedReaderService
 
 /**
  * Implementation of [[FileService]] for comma seperated value(CSV) files.
  */
 @Component
-class CsvService(
-    @Qualifier(PART_STREAM) override val partsStream: BufferedReader,
-    @Qualifier(PRODUCT_STREAM) override val productsStream: BufferedReader
-) : FileService {
-    override fun readProducts(): List<Product> {
-        return getLineSequence(productsStream)
+class CsvService(@Autowired override val bufferedReaderService: BufferedReaderService): FileService {
+    override fun readProducts(path: String): List<Product> {
+        return getLineSequence(path)
             .map { readProduct(it) }.toList()
     }
 
-    override fun readParts(): List<Part> {
-        return getLineSequence(partsStream)
+    override fun readParts(path: String): List<Part> {
+        return getLineSequence(path)
             .map { readPart(it) }.toList()
     }
 
@@ -67,9 +60,11 @@ class CsvService(
             ',',
             ignoreCase = false,
             limit = 6
-        )
+        ).map {
+            it.clean()
+        }
         return Part(
-            punctuatedPartNumber.replace(oldValue = "\"", newValue = ""),
+            punctuatedPartNumber,
             partDescription,
             productId.toInt(),
             originalRetailPrice.toDouble(),
@@ -78,30 +73,18 @@ class CsvService(
         )
     }
 
-    private fun getLineSequence(reader: BufferedReader): Sequence<String> {
+    private fun getLineSequence(path: String): Sequence<String> {
+        val reader = bufferedReaderService.get(path)
         reader.readLine()
-        return reader.lineSequence().filter { it.isNotBlank() };
+        return reader.lineSequence().filter { it.isNotBlank() }
     }
 
 }
 
-@Configuration
-class Config {
-    @Bean
-    @Qualifier(PART_STREAM)
-    fun partsStream(): BufferedReader {
-        return getBufferedReader(PART_FILE_PATH)!!
-    }
-
-    @Bean
-    @Qualifier(PRODUCT_STREAM)
-    fun productsStream(): BufferedReader {
-        return getBufferedReader(PRODUCT_FILE_PATH)!!
-    }
-
+fun String.clean(): String {
+    return replace(oldValue = "\"", newValue = "")
 }
 
-internal fun getBufferedReader(path: String) = Config::class.java.getResourceAsStream(path)?.bufferedReader()
 operator fun <T> List<T>.component6(): T = get(5)
 
 
