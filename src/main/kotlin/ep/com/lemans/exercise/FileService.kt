@@ -41,13 +41,11 @@ class BufferedReaderServiceImpl: BufferedReaderService
 @Component
 class CsvService(@Autowired override val bufferedReaderService: BufferedReaderService): FileService {
     override fun readProducts(path: String): List<Product> {
-        return getLineSequence(path)
-            .map { readProduct(it) }.toList()
+        return parseModel(path, this::readProduct)
     }
 
     override fun readParts(path: String): List<Part> {
-        return getLineSequence(path)
-            .map { readPart(it) }.toList()
+        return parseModel(path, this::readPart)
     }
 
     private fun readProduct(it: String): Product {
@@ -60,11 +58,9 @@ class CsvService(@Autowired override val bufferedReaderService: BufferedReaderSe
             ',',
             ignoreCase = false,
             limit = 6
-        ).map {
-            it.clean()
-        }
+        )
         return Part(
-            punctuatedPartNumber,
+            punctuatedPartNumber.clean(),
             partDescription,
             productId.toInt(),
             originalRetailPrice.toDouble(),
@@ -73,10 +69,14 @@ class CsvService(@Autowired override val bufferedReaderService: BufferedReaderSe
         )
     }
 
-    private fun getLineSequence(path: String): Sequence<String> {
-        val reader = bufferedReaderService.get(path)
-        reader.readLine()
-        return reader.lineSequence().filter { it.isNotBlank() }
+    private fun <M: Model> parseModel(path: String, mapping: (input: String) -> M): List<M> {
+        bufferedReaderService.get(path).use {
+            it.readLine()
+            return it.lineSequence()
+                .filter { line -> line.isNotBlank() }
+                .map { line -> mapping(line) }
+                .toList()
+        }
     }
 
 }
