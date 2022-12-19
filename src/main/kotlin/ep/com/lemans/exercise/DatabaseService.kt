@@ -61,16 +61,22 @@ class JdbcDatabaseService(
     }
 
     override fun fetch(): Set<Product> {
-        with(connectionService) {
-            getResultSet(FETCH_QUERY).use { resultSet ->
-                return resultSet.fold(setOf()) { products, row ->
-                    if (!products.containsKey(row.getKey())) products + row.toProduct().add(row.toPart())
-                    else {
-                        with(products) {
-                            findByKey(row.getKey())?.add(row.toPart())
-                            this
-                        }
-                    }
+        connectionService.getConnection().use { connection ->
+            connection.createStatement().use { statement ->
+                statement.executeQuery(FETCH_QUERY).use { resultSet ->
+                    return mapResultSet(resultSet)
+                }
+            }
+        }
+    }
+
+    internal fun mapResultSet(resultSet: ResultSet): Set<Product> {
+        return resultSet.fold(setOf()) { products, row ->
+            if (!products.containsKey(row.getKey())) products + row.toProduct().add(row.toPart())
+            else {
+                with(products) {
+                    findByKey(row.getKey())?.add(row.toPart())
+                    this
                 }
             }
         }
@@ -80,32 +86,28 @@ class JdbcDatabaseService(
      * Creates and executes bulk insert query for products table.
      */
     private fun insertProducts(products: List<Product>) {
-        with(connectionService) {
-            execute(buildString {
-                append("INSERT INTO $PRODUCT VALUES ")
-                val bulk = products.asSequence().map {
-                    val (productId, productName, categoryName) = it
-                    "('$productId', '$productName', '$categoryName')"
-                }.toList().joinToString { it }
-                append(bulk)
-            })
-        }
+        connectionService.execute(buildString {
+            append("INSERT INTO $PRODUCT VALUES ")
+            val bulk = products.asSequence().map {
+                val (productId, productName, categoryName) = it
+                "('$productId', '$productName', '$categoryName')"
+            }.toList().joinToString { it }
+            append(bulk)
+        })
     }
 
     /**
      * Creates and executes bulk insert query for parts table.
      */
     private fun insertParts(parts: List<Part>) {
-        with(connectionService) {
-            execute(buildString {
-                append("INSERT INTO $PART VALUES ")
-                val bulk = parts.asSequence().map {
-                    val (punctuatedPartNumber, partDescription, productId, originalRetailPrice, branName, imageUrl) = it
-                    "('$punctuatedPartNumber', '$partDescription', '$productId', '$originalRetailPrice','$branName','$imageUrl')"
-                }.toList().joinToString { it }
-                append(bulk)
-            })
-        }
+        connectionService.execute(buildString {
+            append("INSERT INTO $PART VALUES ")
+            val bulk = parts.asSequence().map {
+                val (punctuatedPartNumber, partDescription, productId, originalRetailPrice, branName, imageUrl) = it
+                "('$punctuatedPartNumber', '$partDescription', '$productId', '$originalRetailPrice','$branName','$imageUrl')"
+            }.toList().joinToString { it }
+            append(bulk)
+        })
     }
 
     /**
@@ -113,9 +115,7 @@ class JdbcDatabaseService(
      * part.product_id is defined as cascade on delete.
      */
     private fun clearData() {
-        with(connectionService) {
-            execute("DELETE FROM product")
-        }
+        connectionService.execute("DELETE FROM product")
     }
 
 }
@@ -125,12 +125,12 @@ interface ConnectionService {
         return DriverManager.getConnection(JDBC_URL, USER, PASSWORD)!!
     }
 
-    fun getResultSet(query: String): ResultSet {
-        return getConnection().createStatement().executeQuery(query)
-    }
-
     fun execute(query: String) {
-        getConnection().createStatement().execute(query)
+        getConnection().use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute(query)
+            }
+        }
     }
 }
 
@@ -153,12 +153,12 @@ inline fun <R> ResultSet.fold(initial: R, operation: (acc: R, ResultSet) -> R): 
     return accumulator
 }
 
-operator fun ResultSet.iterator() : Iterator<ResultSet> {
+operator fun ResultSet.iterator(): Iterator<ResultSet> {
     val rs = this
-    return object : Iterator<ResultSet>{
-        override fun hasNext() : Boolean = rs.next()
+    return object : Iterator<ResultSet> {
+        override fun hasNext(): Boolean = rs.next()
 
-        override fun next() : ResultSet = rs
+        override fun next(): ResultSet = rs
     }
 }
 
